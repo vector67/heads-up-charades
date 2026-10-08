@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Heads Up!">
 <title>Heads Up Charades</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🤔%3C/text%3E%3C/svg%3E">
 <style>
   :root {
@@ -61,6 +63,12 @@
   .howto { background: var(--panel); border-radius: 18px; padding: 14px 18px; color: var(--muted); line-height: 1.5; font-size: 15px; }
   .howto b { color: var(--text); }
   .howto ol { margin: 0; padding-left: 20px; }
+  .howto p { margin: 10px 0 0; }
+  .install { position: relative; display: flex; gap: 12px; align-items: center; background: #2b2770; border: 2px solid var(--accent); border-radius: 18px; padding: 14px 44px 14px 16px; line-height: 1.45; font-size: 15px; color: var(--muted); }
+  .install b { color: var(--text); font-size: 16px; }
+  .install .btn { flex: none; padding: 10px 16px; font-size: 15px; }
+  .install .x { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,0,0,.25); font-size: 14px; }
+  .share-ico { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -0.18em; }
 
   /* ---------- Editor ---------- */
   #editor { padding: max(16px, env(safe-area-inset-top)) 16px 24px; max-width: 640px; margin: 0 auto; }
@@ -154,6 +162,12 @@
   <h1 class="logo">Heads <span>Up!</span></h1>
   <p class="tagline">Phone on your forehead. Friends give clues. Tilt to play.</p>
 
+  <div class="install hidden" id="installTip">
+    <div id="installText"></div>
+    <button class="btn primary hidden" id="installBtn">Install</button>
+    <button class="x" id="installClose" aria-label="Dismiss">✕</button>
+  </div>
+
   <div class="section-title">Pick a deck</div>
   <div class="decks" id="deckGrid"></div>
 
@@ -183,6 +197,7 @@
       <li><b>Tilt up</b> to pass ⏭️</li>
       <li>Get as many as you can before the timer runs out.</li>
     </ol>
+    <p id="fullscreenHow"><b>Full screen:</b> add this page to your Home Screen and open it from there, so the browser's toolbars are hidden.</p>
   </div>
 </section>
 
@@ -738,6 +753,46 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape' && game.phase !== 'over') quit();
 });
+
+/* =====================================================================
+   FULL SCREEN / INSTALL TIP
+   iPhone Safari can't hide its toolbars from a web page; the only way is
+   to add the game to the Home Screen and launch it from there.
+   ===================================================================== */
+const SHARE_ICON = '<svg class="share-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+const isStandalone = () => navigator.standalone === true ||
+  ['fullscreen', 'standalone', 'minimal-ui'].some(m => window.matchMedia(`(display-mode: ${m})`).matches);
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installPrompt = null;
+
+function showInstallTip(html, withButton) {
+  if (isStandalone() || store.get('installTipDismissed', false)) return;
+  $('installText').innerHTML = html;
+  $('installBtn').classList.toggle('hidden', !withButton);
+  $('installTip').classList.remove('hidden');
+}
+$('installClose').onclick = () => { $('installTip').classList.add('hidden'); store.set('installTipDismissed', true); };
+
+if (isStandalone()) {
+  $('fullscreenHow').classList.add('hidden');
+} else if (isIOS) {
+  const how = `Tap ${SHARE_ICON} <b style="font-size:inherit">Share</b> (in Safari's <b style="font-size:inherit">⋯</b> menu on newer iPhones), then <b style="font-size:inherit">Add to Home Screen</b>. Open the game from the new icon.`;
+  showInstallTip(`<b>Play full screen</b><br>${how}`, false);
+  $('fullscreenHow').innerHTML = `<b>Full screen:</b> ${how} It opens without Safari's toolbars.`;
+}
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  showInstallTip('<b>Play full screen</b><br>Install the game to your Home Screen.', true);
+});
+$('installBtn').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try { await installPrompt.userChoice; } catch {}
+  installPrompt = null;
+  $('installTip').classList.add('hidden');
+};
+window.addEventListener('appinstalled', () => $('installTip').classList.add('hidden'));
 
 renderMenu();
 })();
