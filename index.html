@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#14123a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Heads Up!">
+<title>Heads Up Charades</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🤔%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #14123a;
+    --panel: #221f55;
+    --text: #ffffff;
+    --muted: #b9b6e6;
+    --play: #2b59ff;
+    --correct: #18b85a;
+    --pass: #ff8a1f;
+    --danger: #ff4d6d;
+    --accent: #ffd23f;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none;
+  }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+  .screen { display: none; min-height: 100%; }
+  .screen.active { display: block; }
+  .hidden { display: none !important; }
+
+  /* ---------- Menu ---------- */
+  #menu { padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); max-width: 900px; margin: 0 auto; }
+  .logo { text-align: center; margin: 12px 0 4px; font-size: clamp(34px, 9vw, 56px); font-weight: 900; letter-spacing: -1px; }
+  .logo span { color: var(--accent); }
+  .tagline { text-align: center; color: var(--muted); margin: 0 0 20px; font-size: 15px; }
+  .section-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 22px 0 10px; }
+  .decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .deck {
+    position: relative; border-radius: 18px; padding: 16px 12px 14px; text-align: center;
+    background: var(--c, var(--panel)); box-shadow: 0 4px 0 rgba(0,0,0,.25);
+    transition: transform .08s;
+  }
+  .deck:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.25); }
+  .deck .emoji { font-size: 40px; line-height: 1.1; }
+  .deck .name { font-weight: 800; font-size: 17px; margin-top: 6px; }
+  .deck .count { font-size: 12px; opacity: .85; margin-top: 2px; }
+  .deck .edit { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,0,0,.25); font-size: 15px; }
+  .deck.add { background: transparent; border: 2px dashed #4b47a0; box-shadow: none; color: var(--muted); }
+  .settings { display: grid; gap: 14px; background: var(--panel); border-radius: 18px; padding: 16px; }
+  .setting label { display: block; font-weight: 700; margin-bottom: 8px; }
+  .setting small { display: block; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+  .seg { display: flex; background: #15133d; border-radius: 12px; padding: 4px; gap: 4px; }
+  .seg button { flex: 1; padding: 10px 6px; border-radius: 9px; background: transparent; font-weight: 700; color: var(--muted); }
+  .seg button.on { background: var(--accent); color: #1a1740; }
+  .howto { background: var(--panel); border-radius: 18px; padding: 14px 18px; color: var(--muted); line-height: 1.5; font-size: 15px; }
+  .howto b { color: var(--text); }
+  .howto ol { margin: 0; padding-left: 20px; }
+
+  /* ---------- Editor ---------- */
+  #editor { padding: max(16px, env(safe-area-inset-top)) 16px 24px; max-width: 640px; margin: 0 auto; }
+  #editor h2 { margin: 8px 0 16px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-weight: 700; margin-bottom: 6px; }
+  .field input, .field textarea {
+    width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--panel);
+    border: 2px solid #3b3785; border-radius: 12px; padding: 12px;
+  }
+  .field textarea { min-height: 40vh; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn { padding: 14px 20px; border-radius: 14px; font-weight: 800; font-size: 17px; background: var(--panel); }
+  .btn.primary { background: var(--accent); color: #1a1740; }
+  .btn.danger { background: var(--danger); }
+  .btn.grow { flex: 1; }
+
+  /* ---------- Game stage (prestart / countdown / play) ---------- */
+  #stage {
+    position: fixed; inset: 0; display: none; overflow: hidden;
+    background: var(--play); touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #stage.active { display: block; }
+  #stage.rotated { inset: auto; top: 50%; left: 50%; }
+  .layer { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; }
+  .layer.active { display: flex; }
+  .close {
+    position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left));
+    width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,.2); font-size: 22px; z-index: 5;
+  }
+  #prestart h2 { font-size: clamp(26px, 7vmin, 54px); margin: 0 0 10px; }
+  #prestart p { font-size: clamp(16px, 4vmin, 24px); margin: 6px 0; max-width: 32em; opacity: .92; }
+  .phone-icon { font-size: clamp(50px, 18vmin, 110px); animation: bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-10px) rotate(-6deg); } }
+  .meter { margin-top: 14px; width: min(320px, 70%); height: 10px; border-radius: 6px; background: rgba(0,0,0,.25); overflow: hidden; }
+  .meter > div { height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
+  #countdownNum { font-size: clamp(120px, 50vmin, 320px); font-weight: 900; line-height: 1; }
+  #countdownDeck { font-size: clamp(18px, 5vmin, 30px); opacity: .85; margin-top: 8px; font-weight: 700; }
+
+  #play { padding: 0; }
+  .hud {
+    position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center;
+    padding: max(10px, env(safe-area-inset-top)) max(70px, env(safe-area-inset-right)) 0 max(70px, env(safe-area-inset-left));
+    font-weight: 900; font-size: clamp(22px, 7vmin, 44px);
+  }
+  #timer.low { color: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.15); } }
+  #wordBox { position: absolute; left: 4%; right: 4%; top: 18%; bottom: 14%; display: flex; align-items: center; justify-content: center; }
+  #word { font-weight: 900; line-height: 1.05; text-align: center; overflow-wrap: normal; word-break: keep-all; text-shadow: 0 4px 0 rgba(0,0,0,.18); }
+  .hint { position: absolute; bottom: max(8px, env(safe-area-inset-bottom)); left: 0; right: 0; font-size: clamp(12px, 3.2vmin, 18px); opacity: .7; font-weight: 600; }
+  .tapbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; padding: 10px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+  .tapbar button { flex: 1; padding: 16px; border-radius: 16px; font-weight: 900; font-size: 20px; }
+  .tapbar .p { background: var(--pass); }
+  .tapbar .c { background: var(--correct); }
+  #stage.tapmode #wordBox { bottom: 22%; }
+  #stage.tapmode .hint { display: none; }
+
+  #flash { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 4; }
+  #flash.show { display: flex; animation: pop .25s ease-out; }
+  #flash.correct { background: var(--correct); }
+  #flash.pass { background: var(--pass); }
+  #flash.over { background: var(--danger); }
+  #flashText { font-size: clamp(60px, 22vmin, 180px); font-weight: 900; }
+  #flashSub { font-size: clamp(18px, 6vmin, 40px); font-weight: 700; opacity: .9; margin-top: 4px; }
+  @keyframes pop { from { transform: scale(1.15); } }
+
+  #debug { position: absolute; bottom: 4px; right: 8px; font: 12px ui-monospace, monospace; opacity: .8; z-index: 6; text-align: right; }
+
+  /* ---------- Results ---------- */
+  #results { padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; }
+  .score-card { text-align: center; background: var(--panel); border-radius: 22px; padding: 20px 16px; margin-top: 8px; }
+  .score-card .lbl { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 13px; }
+  .score-card .big { font-size: 84px; font-weight: 900; line-height: 1; margin: 6px 0; color: var(--accent); }
+  .score-card .sub { color: var(--muted); }
+  .tally { display: flex; justify-content: center; gap: 18px; margin-top: 10px; font-weight: 800; }
+  .tally .ok { color: var(--correct); }
+  .tally .no { color: var(--pass); }
+  .list { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 8px; }
+  .list li { display: flex; align-items: center; gap: 12px; background: var(--panel); border-radius: 14px; padding: 12px 14px; font-weight: 700; font-size: 18px; border-left: 6px solid var(--pass); }
+  .list li.ok { border-left-color: var(--correct); }
+  .list li .mark { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 16px; background: var(--pass); }
+  .list li.ok .mark { background: var(--correct); }
+  .list li .tag { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .empty { text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ================= MENU ================= -->
+<section id="menu" class="screen active">
+  <h1 class="logo">Heads <span>Up!</span></h1>
+  <p class="tagline">Phone on your forehead. Friends give clues. Tilt to play.</p>
+
+  <div class="section-title">Pick a deck</div>
+  <div class="decks" id="deckGrid"></div>
+
+  <div class="section-title">Settings</div>
+  <div class="settings">
+    <div class="setting">
+      <label>Round length</label>
+      <div class="seg" id="segTime">
+        <button data-v="30">30s</button><button data-v="60">60s</button><button data-v="90">90s</button><button data-v="120">120s</button>
+      </div>
+    </div>
+    <div class="setting">
+      <label>Controls</label>
+      <div class="seg" id="segMode">
+        <button data-v="tilt">📱 Tilt</button><button data-v="tap">👆 Tap</button>
+      </div>
+      <small>Tilt uses your phone's motion sensor. Tap shows buttons instead, for when a friend holds the phone or there's no sensor.</small>
+    </div>
+  </div>
+
+  <div class="section-title">How to play</div>
+  <div class="howto">
+    <ol>
+      <li>Pick a deck, then hold the phone <b>sideways on your forehead</b>, screen facing your friends.</li>
+      <li>Your friends act out or describe the word.</li>
+      <li><b>Tilt down</b> when you get it right ✅</li>
+      <li><b>Tilt up</b> to pass ⏭️</li>
+      <li>Get as many as you can before the timer runs out.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ================= CUSTOM DECK EDITOR ================= -->
+<section id="editor" class="screen">
+  <h2 id="editorTitle">New deck</h2>
+  <div class="field">
+    <label for="edName">Deck name</label>
+    <input id="edName" maxlength="40" placeholder="e.g. Family Inside Jokes">
+  </div>
+  <div class="field">
+    <label for="edEmoji">Emoji</label>
+    <input id="edEmoji" maxlength="8" placeholder="🎉">
+  </div>
+  <div class="field">
+    <label for="edWords">Words (one per line)</label>
+    <textarea id="edWords" placeholder="Grandma's lasagne&#10;The dog's birthday&#10;..."></textarea>
+  </div>
+  <div class="row">
+    <button class="btn" id="edCancel">Cancel</button>
+    <button class="btn danger hidden" id="edDelete">Delete</button>
+    <button class="btn primary grow" id="edSave">Save deck</button>
+  </div>
+</section>
+
+<!-- ================= RESULTS ================= -->
+<section id="results" class="screen">
+  <div class="score-card">
+    <div class="lbl" id="resDeck">Deck</div>
+    <div class="big" id="resScore">0</div>
+    <div class="sub">correct</div>
+    <div class="tally"><span class="ok" id="resOk">✓ 0 right</span><span class="no" id="resNo">⏭ 0 passed</span></div>
+  </div>
+  <ul class="list" id="resList"></ul>
+  <div class="row">
+    <button class="btn grow" id="resMenu">Decks</button>
+    <button class="btn primary grow" id="resAgain">Play again</button>
+  </div>
+</section>
+
+<!-- ================= GAME STAGE ================= -->
+<div id="stage">
+  <button class="close" id="quit" aria-label="Quit">✕</button>
+
+  <div class="layer" id="prestart">
+    <div class="phone-icon">📱</div>
+    <h2 id="preTitle">Place on forehead</h2>
+    <p id="preMsg">Hold the phone sideways against your forehead, screen facing out.</p>
+    <div class="meter" id="preMeter"><div></div></div>
+    <div class="row" style="margin-top:18px; justify-content:center">
+      <button class="btn primary hidden" id="preStart">Start</button>
+      <button class="btn hidden" id="preUseTap">Use tap controls</button>
+    </div>
+  </div>
+
+  <div class="layer" id="countdown">
+    <div id="countdownNum">3</div>
+    <div id="countdownDeck"></div>
+  </div>
+
+  <div class="layer" id="play">
+    <div class="hud"><span id="timer">60</span><span id="score">0</span></div>
+    <div id="wordBox"><div id="word"></div></div>
+    <div class="hint">⬇ Tilt down: correct &nbsp;·&nbsp; ⬆ Tilt up: pass</div>
+    <div class="tapbar hidden" id="tapbar">
+      <button class="p" id="btnPass">⏭ Pass</button>
+      <button class="c" id="btnCorrect">✓ Correct</button>
+    </div>
+  </div>
+
+  <div id="flash"><div id="flashText"></div><div id="flashSub"></div></div>
+  <div id="debug" class="hidden"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+   DECKS
+   ===================================================================== */
+const DECKS = [
+  { id: 'movies', name: 'Movies', emoji: '🎬', color: '#e63946', words:
+    'Titanic|The Lion King|Jurassic Park|Star Wars|Frozen|Harry Potter|The Matrix|Jaws|Toy Story|Finding Nemo|Shrek|The Godfather|Back to the Future|Home Alone|Ghostbusters|E.T.|Rocky|Forrest Gump|Avatar|The Wizard of Oz|Pirates of the Caribbean|Mamma Mia!|Grease|The Terminator|Barbie|Top Gun|Spider-Man|Batman|Inception|Gladiator|Mean Girls|The Avengers|Cars|Up|Despicable Me|Ratatouille|Indiana Jones|King Kong|Jumanji|The Little Mermaid|Aladdin|Beauty and the Beast|Mary Poppins|Dirty Dancing|The Lord of the Rings|Kung Fu Panda|Mrs. Doubtfire|Night at the Museum' },
+  { id: 'animals', name: 'Animals', emoji: '🐾', color: '#2a9d8f', words:
+    'Elephant|Giraffe|Kangaroo|Penguin|Octopus|Flamingo|Gorilla|Snake|Crocodile|Dolphin|Shark|Lion|Tiger|Zebra|Hippo|Rhino|Monkey|Chicken|Cow|Pig|Sheep|Horse|Frog|Butterfly|Spider|Bee|Owl|Eagle|Parrot|Bat|Sloth|Koala|Panda|Polar bear|Camel|Peacock|Turtle|Jellyfish|Crab|Squirrel|Rabbit|Hedgehog|Skunk|Llama|Ostrich|Wolf|Whale|Mosquito|Chameleon|Meerkat' },
+  { id: 'actions', name: 'Act It Out', emoji: '🎭', color: '#8e44ad', words:
+    'Brushing teeth|Swimming|Riding a bike|Juggling|Playing guitar|Taking a selfie|Walking a dog|Changing a diaper|Doing yoga|Skydiving|Surfing|Bowling|Fishing|Milking a cow|Typing|Ironing clothes|Baking a cake|Climbing a ladder|Sneezing|Yawning|Proposing marriage|Playing the drums|Boxing|Karate|Skiing|Ice skating|Rowing a boat|Driving a car|Flying a kite|Eating spaghetti|Blowing bubbles|Hula hooping|Painting a wall|Shaving|Putting on makeup|Taking out the trash|Playing tennis|Golfing|Hitchhiking|Directing traffic|Conducting an orchestra|Riding a horse|Walking a tightrope|Being a zombie|Building a sandcastle|Chopping wood|Doing the moonwalk|Sleepwalking' },
+  { id: 'food', name: 'Food & Drink', emoji: '🍕', color: '#f4a261', words:
+    'Pizza|Sushi|Spaghetti|Hamburger|Hot dog|Taco|Pancakes|Ice cream|Popcorn|Chocolate|Banana|Watermelon|Pineapple|Coconut|Avocado|Cheese|Bacon|Fried egg|French fries|Donut|Croissant|Cupcake|Birthday cake|Lollipop|Cotton candy|Coffee|Lemonade|Milkshake|Smoothie|Hot chocolate|Burrito|Nachos|Salad|Soup|Sandwich|Peanut butter|Broccoli|Carrot|Corn on the cob|Onion|Chilli pepper|Garlic|Waffles|Pretzel|Marshmallow|Bubble gum|Toast|Cereal|Dumplings' },
+  { id: 'people', name: 'Famous People', emoji: '⭐', color: '#e9c46a', words:
+    'Albert Einstein|Taylor Swift|Beyoncé|Michael Jackson|Elvis Presley|Barack Obama|Cristiano Ronaldo|Lionel Messi|Serena Williams|Usain Bolt|Oprah Winfrey|Leonardo DiCaprio|Tom Hanks|Marilyn Monroe|Charlie Chaplin|William Shakespeare|Mozart|Leonardo da Vinci|Cleopatra|Napoleon|Queen Elizabeth II|Nelson Mandela|Elon Musk|Steve Jobs|Bill Gates|Lady Gaga|Rihanna|Ed Sheeran|Adele|Dwayne "The Rock" Johnson|Arnold Schwarzenegger|Madonna|Freddie Mercury|The Beatles|Michael Jordan|Muhammad Ali|Roger Federer|Gordon Ramsay|David Attenborough|Kim Kardashian|Justin Bieber|Shakira|Bob Marley|Pablo Picasso|Isaac Newton|Abraham Lincoln|Walt Disney|Rowan Atkinson' },
+  { id: 'characters', name: 'Characters', emoji: '🦸', color: '#1d3557', words:
+    'Spider-Man|Batman|Superman|Wonder Woman|Iron Man|The Hulk|Captain America|Thor|Harry Potter|Darth Vader|Yoda|Mickey Mouse|SpongeBob|Homer Simpson|Super Mario|Pikachu|Sherlock Holmes|James Bond|Santa Claus|Easter Bunny|Tooth Fairy|Cinderella|Snow White|Peter Pan|Captain Hook|Shrek|Elsa|Olaf|Winnie the Pooh|Scooby-Doo|Bugs Bunny|Garfield|Barbie|Kermit the Frog|Cookie Monster|Dracula|Frankenstein|Robin Hood|Tarzan|Pinocchio|Sonic the Hedgehog|Buzz Lightyear|Woody|The Grinch|Willy Wonka|Gandalf|Jack Sparrow|Wolverine' },
+  { id: 'places', name: 'Places', emoji: '🌍', color: '#457b9d', words:
+    'Eiffel Tower|Statue of Liberty|Great Wall of China|Pyramids of Giza|Taj Mahal|Colosseum|Big Ben|Mount Everest|Grand Canyon|Niagara Falls|Disneyland|Las Vegas|Hollywood|Paris|London|New York|Tokyo|Rome|Venice|Amsterdam|Sydney Opera House|Table Mountain|Machu Picchu|Stonehenge|Leaning Tower of Pisa|Golden Gate Bridge|Antarctica|Sahara Desert|Amazon Rainforest|Hawaii|Airport|Hospital|Library|Beach|Zoo|Supermarket|Gym|Cinema|School|Space station|The Moon|Volcano|Igloo|Castle|Lighthouse|Farm|Casino|Dentist' },
+  { id: 'jobs', name: 'Jobs', emoji: '💼', color: '#6d597a', words:
+    'Doctor|Teacher|Firefighter|Police officer|Chef|Pilot|Astronaut|Dentist|Plumber|Electrician|Farmer|Lifeguard|Magician|Clown|Postman|Hairdresser|Photographer|Judge|Lawyer|Scientist|Vet|Nurse|Builder|Mechanic|Taxi driver|Waiter|DJ|Personal trainer|Gardener|Librarian|Soldier|Detective|Pirate|Ballet dancer|Referee|Cashier|Painter|Architect|Barista|Butcher|Baker|Fisherman|Zookeeper|Tour guide|News reporter|Window cleaner|Lumberjack|Programmer' },
+  { id: 'sports', name: 'Sports & Games', emoji: '⚽', color: '#2d6a4f', words:
+    'Football|Basketball|Tennis|Golf|Cricket|Rugby|Baseball|Ice hockey|Swimming|Boxing|Wrestling|Karate|Skateboarding|Surfing|Snowboarding|Skiing|Cycling|Marathon|Gymnastics|Volleyball|Table tennis|Badminton|Archery|Fencing|Bowling|Darts|Chess|Pole vault|High jump|Horse racing|Formula 1|Rock climbing|Sumo wrestling|Water polo|Kayaking|Hide and seek|Tug of war|Hopscotch|Musical chairs|Limbo|Frisbee|Dodgeball|Weightlifting|Figure skating|Curling|Monopoly|Rock paper scissors|Jenga' },
+  { id: 'kids', name: 'Kids', emoji: '🧸', color: '#ff6b9a', words:
+    'Dog|Cat|Duck|Ball|Car|Train|Airplane|Rainbow|Sun|Moon|Star|Tree|Flower|Apple|Banana|Ice cream|Teddy bear|Balloon|Dinosaur|Robot|Princess|Monster|Ghost|Bubbles|Rocket|Boat|Snowman|Pizza|Birthday|Butterfly|Dragon|Unicorn|Mermaid|Fire truck|Bicycle|Bath time|Sleeping|Dancing|Jumping|Crying baby|Swing|Slide|Kite|Crayon|Bunny|Elephant|Lion|Monkey' },
+].map(d => ({ ...d, words: d.words.split('|') }));
+
+/* =====================================================================
+   TUNING
+   Tilt is measured as how much the screen faces the sky:
+     z = +1 screen up (looking at ceiling), 0 vertical on forehead, -1 screen down.
+   ===================================================================== */
+const TRIGGER = 0.55;     // |z| beyond this (~33°) counts as a tilt
+const NEUTRAL = 0.30;     // |z| below this (~17°) counts as "upright on forehead"
+const SMOOTH = 0.35;      // low-pass filter factor for sensor readings
+const HOLD_MS = 900;      // how long to hold upright before the countdown starts
+const FLASH_MS = 750;     // how long the correct/pass flash shows
+const SENSOR_WAIT_MS = 1500;
+
+/* =====================================================================
+   STORAGE (all optional - the game works without it)
+   ===================================================================== */
+const store = {
+  get(k, def) { try { const v = localStorage.getItem('huc.' + k); return v == null ? def : JSON.parse(v); } catch { return def; } },
+  set(k, v) { try { localStorage.setItem('huc.' + k, JSON.stringify(v)); } catch {} },
+};
+const settings = { time: store.get('time', 60), mode: store.get('mode', 'tilt') };
+let customDecks = store.get('customDecks', []);
+
+const params = new URLSearchParams(location.search);
+const DEBUG = params.has('debug');
+
+/* =====================================================================
+   DOM helpers
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const screens = ['menu', 'editor', 'results'];
+function showScreen(name) {
+  screens.forEach(s => $(s).classList.toggle('active', s === name));
+  $('stage').classList.toggle('active', name === 'stage');
+  if (name !== 'stage') window.scrollTo(0, 0);
+}
+function showLayer(name) {
+  ['prestart', 'countdown', 'play'].forEach(l => $(l).classList.toggle('active', l === name));
+}
+const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+/* =====================================================================
+   MENU
+   ===================================================================== */
+function allDecks() { return [...DECKS, ...customDecks.map(d => ({ ...d, custom: true, color: d.color || '#3a3690' }))]; }
+
+function renderMenu() {
+  const grid = $('deckGrid');
+  grid.innerHTML = allDecks().map(d => `
+    <button class="deck" style="--c:${d.color}" data-id="${esc(d.id)}">
+      ${d.custom ? `<span class="edit" data-edit="${esc(d.id)}" role="button" aria-label="Edit deck">✎</span>` : ''}
+      <div class="emoji">${esc(d.emoji || '🎉')}</div>
+      <div class="name">${esc(d.name)}</div>
+      <div class="count">${d.words.length} cards</div>
+    </button>`).join('') +
+    `<button class="deck add" id="addDeck"><div class="emoji">＋</div><div class="name">Custom deck</div><div class="count">Make your own</div></button>`;
+
+  for (const [segId, key] of [['segTime', 'time'], ['segMode', 'mode']]) {
+    $(segId).querySelectorAll('button').forEach(b => b.classList.toggle('on', String(settings[key]) === b.dataset.v));
+  }
+}
+
+$('deckGrid').addEventListener('click', e => {
+  const edit = e.target.closest('[data-edit]');
+  if (edit) { e.stopPropagation(); openEditor(edit.dataset.edit); return; }
+  if (e.target.closest('#addDeck')) { openEditor(null); return; }
+  const btn = e.target.closest('.deck[data-id]');
+  if (btn) startGame(allDecks().find(d => d.id === btn.dataset.id));
+});
+
+for (const [segId, key] of [['segTime', 'time'], ['segMode', 'mode']]) {
+  $(segId).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    settings[key] = key === 'time' ? Number(b.dataset.v) : b.dataset.v;
+    store.set(key, settings[key]);
+    renderMenu();
+  });
+}
+
+/* =====================================================================
+   CUSTOM DECK EDITOR
+   ===================================================================== */
+let editingId = null;
+function openEditor(id) {
+  editingId = id;
+  const d = customDecks.find(x => x.id === id);
+  $('editorTitle').textContent = d ? 'Edit deck' : 'New deck';
+  $('edName').value = d ? d.name : '';
+  $('edEmoji').value = d ? d.emoji : '';
+  $('edWords').value = d ? d.words.join('\n') : '';
+  $('edDelete').classList.toggle('hidden', !d);
+  showScreen('editor');
+}
+$('edCancel').onclick = () => showScreen('menu');
+$('edDelete').onclick = () => {
+  if (!confirm('Delete this deck?')) return;
+  customDecks = customDecks.filter(d => d.id !== editingId);
+  store.set('customDecks', customDecks);
+  renderMenu(); showScreen('menu');
+};
+$('edSave').onclick = () => {
+  const name = $('edName').value.trim();
+  const words = [...new Set($('edWords').value.split(/\n/).map(w => w.trim()).filter(Boolean))];
+  if (!name) { alert('Give your deck a name.'); return; }
+  if (words.length < 3) { alert('Add at least 3 words (one per line).'); return; }
+  const deck = { id: editingId || 'custom-' + Date.now(), name, emoji: $('edEmoji').value.trim() || '🎉', words };
+  const i = customDecks.findIndex(d => d.id === deck.id);
+  if (i >= 0) customDecks[i] = deck; else customDecks.push(deck);
+  store.set('customDecks', customDecks);
+  renderMenu(); showScreen('menu');
+};
+
+/* =====================================================================
+   SOUND + HAPTICS
+   ===================================================================== */
+let audio = null;
+function initAudio() {
+  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch { audio = null; }
+}
+function tone(freq, start, dur, type = 'sine', vol = 0.25) {
+  if (!audio) return;
+  const t = audio.currentTime + start, o = audio.createOscillator(), g = audio.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur);
+}
+const sfx = {
+  correct() { tone(660, 0, .12); tone(990, .1, .25); buzz(60); },
+  pass()    { tone(300, 0, .25, 'triangle'); buzz([40, 40, 40]); },
+  tick()    { tone(1200, 0, .05, 'square', .08); },
+  go()      { tone(880, 0, .35); buzz(80); },
+  count()   { tone(520, 0, .15); },
+  end()     { tone(440, 0, .2, 'sawtooth', .2); tone(330, .2, .2, 'sawtooth', .2); tone(220, .4, .5, 'sawtooth', .2); buzz(400); },
+};
+function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch {} }
+
+/* =====================================================================
+   SCREEN: wake lock, fullscreen, orientation
+   ===================================================================== */
+let wakeLock = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => wakeLock = null); } } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && game) keepAwake(); });
+function enterFullscreen() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req || document.fullscreenElement) return;
+  try {
+    const p = req.call(el, { navigationUI: 'hide' });
+    if (p && p.then) p.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {});
+  } catch {}
+}
+function exitFullscreen() {
+  try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch {}
+  try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
+}
+
+/* If the browser stays in portrait (e.g. rotation lock on) while the phone is held
+   sideways, rotate the game stage ourselves so the word reads correctly. */
+let stageRot = 0;
+function layoutStage() {
+  const st = $('stage'), w = window.innerWidth, h = window.innerHeight;
+  if (stageRot && h > w) {
+    st.classList.add('rotated');
+    st.style.width = h + 'px'; st.style.height = w + 'px';
+    st.style.transform = `translate(-50%, -50%) rotate(${stageRot}deg)`;
+  } else {
+    st.classList.remove('rotated');
+    st.style.width = st.style.height = st.style.transform = '';
+  }
+  if (game && game.phase === 'play') fitWord();
+}
+window.addEventListener('resize', layoutStage);
+window.addEventListener('orientationchange', () => setTimeout(layoutStage, 200));
+
+/* =====================================================================
+   MOTION SENSOR
+   ===================================================================== */
+const sensor = { seen: false, z: null, x: 0 };
+function onOrientation(e) {
+  if (e.beta == null || e.gamma == null) return;
+  sensor.seen = true;
+  const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+  // World "up" expressed in device coordinates (W3C deviceorientation, Z-X'-Y'' angles).
+  const uz = Math.cos(b) * Math.cos(g);    // + = screen facing ceiling, - = facing floor
+  const ux = -Math.cos(b) * Math.sin(g);   // + = device's right edge (in portrait) is up
+  sensor.z = sensor.z == null ? uz : sensor.z + SMOOTH * (uz - sensor.z);
+  sensor.x = ux;
+  if (DEBUG) $('debug').textContent = `β ${e.beta.toFixed(0)} γ ${e.gamma.toFixed(0)} | z ${sensor.z.toFixed(2)} x ${ux.toFixed(2)}`;
+  onTilt();
+}
+window.addEventListener('deviceorientation', onOrientation);
+
+/** Must be called from inside a user gesture (iOS permission prompt). */
+function requestMotionPermission() {
+  const DOE = window.DeviceOrientationEvent;
+  if (DOE && typeof DOE.requestPermission === 'function') {
+    return DOE.requestPermission().then(r => r === 'granted').catch(() => false);
+  }
+  return Promise.resolve(true);
+}
+
+/* =====================================================================
+   GAME
+   ===================================================================== */
+let game = null;
+
+function buildQueue(deck) {
+  // Prefer cards not seen recently so repeated games feel fresh.
+  const seen = new Set(store.get('seen.' + deck.id, []));
+  const fresh = deck.words.filter(w => !seen.has(w));
+  const old = deck.words.filter(w => seen.has(w));
+  if (fresh.length < 10) { store.set('seen.' + deck.id, []); return shuffle(deck.words); }
+  return [...shuffle(fresh), ...shuffle(old)];
+}
+function markSeen(deck, word) {
+  const seen = store.get('seen.' + deck.id, []);
+  if (!seen.includes(word)) { seen.push(word); store.set('seen.' + deck.id, seen); }
+}
+
+function startGame(deck) {
+  if (!deck) return;
+  // Everything that needs a user gesture happens synchronously here.
+  initAudio();
+  const permission = settings.mode === 'tilt' ? requestMotionPermission() : Promise.resolve(true);
+  enterFullscreen();
+  keepAwake();
+
+  clearTimers();
+  game = {
+    deck, mode: settings.mode, duration: settings.time,
+    queue: buildQueue(deck), current: null, results: [],
+    phase: 'prestart', armed: false, holdStart: 0, timers: [],
+  };
+  stageRot = 0;
+  $('stage').classList.toggle('tapmode', game.mode === 'tap');
+  $('tapbar').classList.toggle('hidden', game.mode !== 'tap');
+  $('debug').classList.toggle('hidden', !DEBUG);
+  $('flash').className = '';
+  showScreen('stage');
+  showLayer('prestart');
+  layoutStage();
+  setPrestart();
+
+  if (game.mode === 'tilt') {
+    const g = game;
+    permission.then(ok => {
+      if (game !== g || g.phase !== 'prestart') return;
+      if (!ok) { sensorUnavailable('Motion access was denied. Allow it in your browser settings, or use tap controls.'); return; }
+      later(() => { if (!sensor.seen && game === g && g.phase === 'prestart') sensorUnavailable('No motion sensor detected on this device.'); }, SENSOR_WAIT_MS);
+    });
+  }
+}
+
+function setPrestart() {
+  const tilt = game.mode === 'tilt';
+  $('preTitle').textContent = tilt ? 'Place on forehead' : 'Ready?';
+  $('preMsg').textContent = tilt
+    ? 'Hold the phone sideways against your forehead, screen facing out. The game starts when it is upright.'
+    : 'Hand the phone to someone, or hold it so your friends can see the screen.';
+  $('preMeter').classList.toggle('hidden', !tilt);
+  $('preMeter').firstElementChild.style.width = '0';
+  $('preStart').classList.toggle('hidden', tilt);
+  $('preUseTap').classList.add('hidden');
+}
+
+function sensorUnavailable(msg) {
+  $('preTitle').textContent = 'Tilt not available';
+  $('preMsg').textContent = msg;
+  $('preMeter').classList.add('hidden');
+  $('preUseTap').classList.remove('hidden');
+}
+
+$('preUseTap').onclick = () => {
+  settings.mode = 'tap'; store.set('mode', 'tap');
+  game.mode = 'tap';
+  $('stage').classList.add('tapmode');
+  $('tapbar').classList.remove('hidden');
+  setPrestart();
+};
+$('preStart').onclick = () => startCountdown();
+
+function startCountdown() {
+  if (!game || game.phase !== 'prestart') return;
+  game.phase = 'countdown';
+  if (game.mode === 'tilt' && Math.abs(sensor.x) > 0.5) stageRot = sensor.x > 0 ? 90 : -90;
+  layoutStage();
+  showLayer('countdown');
+  $('countdownDeck').textContent = `${game.deck.emoji || ''} ${game.deck.name}`;
+  let n = 3;
+  const step = () => {
+    if (!game || game.phase !== 'countdown') return;
+    if (n === 0) { beginPlay(); return; }
+    $('countdownNum').textContent = n; sfx.count(); n--;
+    later(step, 1000);
+  };
+  step();
+}
+
+function beginPlay() {
+  game.phase = 'play';
+  game.endAt = Date.now() + game.duration * 1000;
+  game.armed = sensor.z != null && Math.abs(sensor.z) < NEUTRAL;
+  sfx.go();
+  showLayer('play');
+  $('score').textContent = '0';
+  nextWord();
+  updateTimer();
+  game.interval = setInterval(updateTimer, 100);
+}
+
+function updateTimer() {
+  if (!game || game.phase !== 'play') return;
+  const left = Math.max(0, Math.ceil((game.endAt - Date.now()) / 1000));
+  const t = $('timer');
+  if (t.textContent !== String(left)) {
+    t.textContent = left;
+    if (left <= 5 && left > 0) sfx.tick();
+  }
+  t.classList.toggle('low', left <= 10);
+  if (left <= 0) endGame();
+}
+
+function nextWord() {
+  if (!game.queue.length) {
+    // Ran out of cards: bring back the ones that were passed.
+    const passed = game.results.filter(r => !r.correct).map(r => r.word);
+    game.queue = shuffle(passed.length ? passed : game.deck.words);
+  }
+  game.current = game.queue.shift();
+  markSeen(game.deck, game.current);
+  $('word').textContent = game.current;
+  fitWord();
+}
+
+function fitWord() {
+  const el = $('word'), box = $('wordBox');
+  const maxW = box.clientWidth, maxH = box.clientHeight;
+  if (!maxW || !maxH) return;
+  let lo = 14, hi = 400;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    el.style.fontSize = mid + 'px';
+    if (el.scrollWidth <= maxW && el.scrollHeight <= maxH) lo = mid; else hi = mid;
+  }
+  el.style.fontSize = lo + 'px';
+}
+
+function answer(correct) {
+  if (!game || game.phase !== 'play' || game.flashing) return;
+  game.results.push({ word: game.current, correct });
+  game.armed = false;
+  game.flashing = true;
+  const score = game.results.filter(r => r.correct).length;
+  $('score').textContent = score;
+  correct ? sfx.correct() : sfx.pass();
+  flash(correct ? 'correct' : 'pass', correct ? 'CORRECT!' : 'PASS', game.current);
+  const g = game;
+  later(() => {
+    if (game !== g || g.phase !== 'play') return;
+    hideFlash();
+    g.flashing = false;
+    nextWord();
+  }, FLASH_MS);
+}
+
+function flash(kind, text, sub) {
+  $('flashText').textContent = text;
+  $('flashSub').textContent = sub || '';
+  const f = $('flash'); f.className = ''; void f.offsetWidth; f.className = 'show ' + kind;
+}
+function hideFlash() { $('flash').className = ''; }
+
+function onTilt() {
+  if (!game || game.mode !== 'tilt' || sensor.z == null) return;
+  const z = sensor.z, now = Date.now();
+  if (game.phase === 'prestart') {
+    if (Math.abs(z) < NEUTRAL) {
+      if (!game.holdStart) game.holdStart = now;
+      const p = Math.min(1, (now - game.holdStart) / HOLD_MS);
+      $('preMeter').firstElementChild.style.width = (p * 100) + '%';
+      if (p >= 1) startCountdown();
+    } else {
+      game.holdStart = 0;
+      $('preMeter').firstElementChild.style.width = '0';
+    }
+  } else if (game.phase === 'play' && !game.flashing) {
+    if (!game.armed) { if (Math.abs(z) < NEUTRAL) game.armed = true; return; }
+    if (z < -TRIGGER) answer(true);        // screen tips toward the floor = head tilted down
+    else if (z > TRIGGER) answer(false);   // screen tips toward the ceiling = head tilted up
+  }
+}
+
+function endGame() {
+  if (!game || game.phase !== 'play') return;
+  game.phase = 'over';
+  clearTimers();
+  // The card on screen when time ran out counts as missed.
+  if (!game.flashing && game.current) game.results.push({ word: game.current, correct: false, timeout: true });
+  sfx.end();
+  flash('over', "TIME'S UP!", '');
+  const g = game;
+  later(() => { if (game === g) showResults(); }, 1600);
+}
+
+function showResults() {
+  const res = game.results, ok = res.filter(r => r.correct).length;
+  $('resDeck').textContent = `${game.deck.emoji || ''} ${game.deck.name}`;
+  $('resScore').textContent = ok;
+  $('resOk').textContent = `✓ ${ok} right`;
+  $('resNo').textContent = `⏭ ${res.length - ok} missed`;
+  $('resList').innerHTML = res.length
+    ? res.map(r => `<li class="${r.correct ? 'ok' : ''}"><span class="mark">${r.correct ? '✓' : '✕'}</span>${esc(r.word)}${r.timeout ? '<span class="tag">time ran out</span>' : (!r.correct ? '<span class="tag">passed</span>' : '')}</li>`).join('')
+    : '<li class="empty">No cards played.</li>';
+  hideFlash();
+  stageRot = 0; layoutStage();
+  exitFullscreen();
+  showScreen('results');
+}
+
+function later(fn, ms) { const id = setTimeout(fn, ms); if (game) game.timers.push(id); return id; }
+function clearTimers() {
+  if (!game) return;
+  game.timers.forEach(clearTimeout); game.timers = [];
+  clearInterval(game.interval);
+}
+
+function quit() {
+  clearTimers(); game = null; hideFlash();
+  stageRot = 0; layoutStage();
+  exitFullscreen();
+  showScreen('menu');
+}
+
+$('quit').onclick = quit;
+$('btnCorrect').onclick = () => answer(true);
+$('btnPass').onclick = () => answer(false);
+$('resAgain').onclick = () => { const d = game && game.deck; startGame(allDecks().find(x => x.id === (d && d.id)) || d); };
+$('resMenu').onclick = () => { game = null; showScreen('menu'); };
+
+document.addEventListener('keydown', e => {
+  if (!game) return;
+  if (game.phase === 'play') {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); answer(true); }
+    else if (e.key === 'ArrowUp' || e.key === ' ') { e.preventDefault(); answer(false); }
+  } else if (game.phase === 'prestart' && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault(); startCountdown();
+  }
+  if (e.key === 'Escape' && game.phase !== 'over') quit();
+});
+
+renderMenu();
+})();
+</script>
+</body>
+</html>
