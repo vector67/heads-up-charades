@@ -13,7 +13,7 @@ A mobile Heads Up! clone in a single `index.html`, with no build step and no dep
 
 Other features:
 
-- 15 built-in decks, plus custom decks you can make yourself (saved on your device).
+- 16 built-in decks, plus custom decks you can make yourself (saved on your device).
 - Round length of 30, 60, 90 or 120 seconds.
 - **Tap** mode with on-screen Pass/Correct buttons, for devices without a motion sensor.
 - On a computer, the arrow keys work: ↓ is correct, ↑ is pass, Esc quits.
